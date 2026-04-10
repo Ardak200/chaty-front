@@ -1,0 +1,4 @@
+- [User profile](user_profile.md) — React dev learning Vue, building "chaty" chat app frontend
+- [Use axios](feedback_axios.md) — Prefers axios over fetch for HTTP requests
+- [Teaching mode](feedback_teaching_mode.md) — Show code, don't write files. User writes it themselves to learn.
+- [TanStack Query](feedback_tanstack.md) — Use vue-query for server state, Pinia for client-only state
