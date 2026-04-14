@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { onBeforeUnmount, ref, watch } from "vue";
 import { useAuthStore } from "../stores/auth";
 import {
   useEditMessage,
@@ -15,6 +15,42 @@ const deleteMutation = useDeleteMessage(props.conversationId);
 
 const isEditing = ref(false);
 const draft = ref("");
+const showPopover = ref(false);
+const bubbleEl = ref<HTMLElement | null>(null);
+
+function openPopover(e: MouseEvent) {
+  if (!isMine() || isEditing.value) return;
+  e.preventDefault();
+  showPopover.value = true;
+}
+
+function closePopover() {
+  showPopover.value = false;
+}
+
+function handleDocClick(e: MouseEvent) {
+  if (!bubbleEl.value) return;
+  if (!bubbleEl.value.contains(e.target as Node)) closePopover();
+}
+
+function handleKey(e: KeyboardEvent) {
+  if (e.key === "Escape") closePopover();
+}
+
+watch(showPopover, (open) => {
+  if (open) {
+    document.addEventListener("mousedown", handleDocClick);
+    document.addEventListener("keydown", handleKey);
+  } else {
+    document.removeEventListener("mousedown", handleDocClick);
+    document.removeEventListener("keydown", handleKey);
+  }
+});
+
+onBeforeUnmount(() => {
+  document.removeEventListener("mousedown", handleDocClick);
+  document.removeEventListener("keydown", handleKey);
+});
 
 function senderIdOf(msg: Message) {
   return typeof msg.sender === "string" ? msg.sender : msg.sender._id;
@@ -28,6 +64,7 @@ const isMine = () => senderIdOf(props.message) === auth.user?.id;
 function startEdit() {
   draft.value = props.message.content;
   isEditing.value = true;
+  closePopover();
 }
 
 function cancelEdit() {
@@ -46,6 +83,7 @@ function saveEdit() {
 }
 
 function remove() {
+  closePopover();
   if (confirm("Delete this message?")) {
     deleteMutation.mutate(props.message._id);
   }
@@ -54,7 +92,7 @@ function remove() {
 
 <template>
   <div class="message" :class="{ mine: isMine() }">
-    <div class="bubble">
+    <div class="bubble" ref="bubbleEl" @contextmenu="openPopover">
       <span v-if="senderNameOf(message)" class="sender">
         {{ senderNameOf(message) }}
       </span>
@@ -73,9 +111,9 @@ function remove() {
           <span v-if="message.isEdited" class="edited">(edited)</span>
         </p>
 
-        <div v-if="isMine()" class="actions">
-          <button @click="startEdit">Edit</button>
-          <button @click="remove">Delete</button>
+        <div v-if="isMine() && showPopover" class="popover" role="menu">
+          <button type="button" @click="startEdit">Edit</button>
+          <button type="button" @click="remove">Delete</button>
         </div>
       </template>
     </div>
@@ -125,29 +163,46 @@ function remove() {
   margin-left: 4px;
 }
 
-.actions {
-  display: none;
-  gap: 6px;
+.bubble {
+  user-select: none;
+}
+
+.popover {
+  position: absolute;
+  top: 100%;
+  right: 0;
   margin-top: 6px;
-}
-
-.bubble:hover .actions {
   display: flex;
+  flex-direction: column;
+  min-width: 110px;
+  background: var(--bg, #1f1f22);
+  color: var(--text-h);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+  padding: 4px;
+  z-index: 10;
 }
 
-.actions button {
-  background: rgba(255, 255, 255, 0.2);
+.message:not(.mine) .popover {
+  right: auto;
+  left: 0;
+}
+
+.popover button {
+  background: transparent;
   border: none;
   color: inherit;
   font: inherit;
-  font-size: 12px;
-  padding: 3px 8px;
+  font-size: 13px;
+  text-align: left;
+  padding: 6px 10px;
   border-radius: 4px;
   cursor: pointer;
 }
 
-.actions button:hover {
-  background: rgba(255, 255, 255, 0.35);
+.popover button:hover {
+  background: rgba(127, 127, 127, 0.18);
 }
 
 .edit-form {
