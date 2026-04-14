@@ -4,10 +4,12 @@ import { storeToRefs } from "pinia";
 import { useAuthStore } from "../stores/auth";
 import { useChatStore } from "../stores/chat";
 import { useConversations } from "../api/queries";
+import { useWebRTC } from "../composables/useWebRTC";
 import ConversationsList from "../components/ConversationsList.vue";
 import MessageList from "../components/MessageList.vue";
 import MessageComposer from "../components/MessageComposer.vue";
 import NewConversationDialog from "../components/NewConversationDialog.vue";
+import VideoCall from "../components/VideoCall.vue";
 
 const auth = useAuthStore();
 const chat = useChatStore();
@@ -16,16 +18,29 @@ const { activeConversationId } = storeToRefs(chat);
 const { data: conversations } = useConversations();
 const showNewConvoDialog = ref(false);
 
+const { startCall, status: callStatus } = useWebRTC();
+
 const activeConversation = computed(() =>
   conversations.value?.find((c) => c._id === activeConversationId.value),
 );
+
+const otherParticipant = computed(() => {
+  const convo = activeConversation.value;
+  if (!convo || convo.type !== "direct") return null;
+  return convo.participants.find((p) => p._id !== auth.user?.id) || null;
+});
 
 function conversationTitle() {
   const convo = activeConversation.value;
   if (!convo) return "";
   if (convo.type === "group") return convo.name || "Group chat";
-  const other = convo.participants.find((p) => p._id !== auth.user?.id);
-  return other?.username || "Direct chat";
+  return otherParticipant.value?.username || "Direct chat";
+}
+
+function handleCallClick() {
+  if (otherParticipant.value) {
+    startCall(otherParticipant.value._id);
+  }
 }
 </script>
 
@@ -55,6 +70,14 @@ function conversationTitle() {
       <template v-else>
         <header class="main-header">
           <h3>{{ conversationTitle() }}</h3>
+          <button
+            v-if="otherParticipant"
+            class="call-btn"
+            :disabled="callStatus !== 'idle'"
+            @click="handleCallClick"
+          >
+            📞 Call
+          </button>
         </header>
 
         <MessageList :conversation-id="activeConversationId" />
@@ -66,6 +89,8 @@ function conversationTitle() {
       :open="showNewConvoDialog"
       @close="showNewConvoDialog = false"
     />
+
+    <VideoCall />
   </div>
 </template>
 
@@ -123,11 +148,30 @@ function conversationTitle() {
 .main-header {
   padding: 16px 20px;
   border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
 .main-header h3 {
   margin: 0;
   color: var(--text-h);
+}
+
+.call-btn {
+  padding: 8px 14px;
+  background: var(--accent);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 14px;
+}
+
+.call-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .empty {

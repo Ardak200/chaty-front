@@ -1,16 +1,20 @@
 import { io, Socket } from 'socket.io-client'
+import { getAccessToken } from './http'
+import { bindCallListeners } from '../composables/useWebRTC'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
 
 let socket: Socket | null = null
 
 export function connectSocket() {
-  const token = localStorage.getItem('token')
-  if (!token || socket?.connected) return
+  if (socket?.connected) return socket
 
   socket = io(API_URL, {
-    auth: { token },
+    withCredentials: true,
+    auth: { token: getAccessToken() },
   })
+
+  bindCallListeners(socket)
 
   return socket
 }
