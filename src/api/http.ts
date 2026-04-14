@@ -2,13 +2,27 @@ import axios from 'axios'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
 
+const TOKEN_KEY = 'accessToken'
+
+export function getAccessToken() {
+  return localStorage.getItem(TOKEN_KEY)
+}
+
+export function setAccessToken(token: string) {
+  localStorage.setItem(TOKEN_KEY, token)
+}
+
+export function clearAccessToken() {
+  localStorage.removeItem(TOKEN_KEY)
+}
+
 export const http = axios.create({
   baseURL: API_URL,
   withCredentials: true,
 })
 
 http.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token')
+  const token = getAccessToken()
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
   }
@@ -27,11 +41,12 @@ http.interceptors.response.use(
         const { data } = await axios.post(`${API_URL}/auth/refresh`, null, {
           withCredentials: true,
         })
-        localStorage.setItem('token', data.data.token)
-        original.headers.Authorization = `Bearer ${data.data.token}`
+        const newToken = data?.data?.token
+        if (newToken) setAccessToken(newToken)
+        if (newToken) original.headers.Authorization = `Bearer ${newToken}`
         return http(original)
       } catch {
-        localStorage.removeItem('token')
+        clearAccessToken()
         window.location.href = '/login'
       }
     }

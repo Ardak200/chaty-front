@@ -1,7 +1,7 @@
 import { defineStore } from "pinia";
 import { ref } from "vue";
 import { useRouter } from "vue-router";
-import { http } from "../api/http";
+import { http, setAccessToken, clearAccessToken } from "../api/http";
 import { connectSocket, disconnectSocket } from "../api/socket";
 
 interface User {
@@ -15,6 +15,7 @@ export const useAuthStore = defineStore("auth", () => {
   const loading = ref(false);
   const error = ref("");
   const router = useRouter();
+  let initPromise: Promise<void> | null = null;
 
   async function register(username: string, email: string, password: string) {
     loading.value = true;
@@ -27,7 +28,7 @@ export const useAuthStore = defineStore("auth", () => {
         password,
       });
 
-      localStorage.setItem("token", data.data.token);
+      if (data.data.token) setAccessToken(data.data.token);
       user.value = data.data.user;
       connectSocket();
       router.push("/");
@@ -43,7 +44,7 @@ export const useAuthStore = defineStore("auth", () => {
     error.value = "";
     try {
       const { data } = await http.post("/auth/login", { email, password });
-      localStorage.setItem("token", data.data.token);
+      if (data.data.token) setAccessToken(data.data.token);
       user.value = data.data.user;
       connectSocket();
       router.push("/");
@@ -54,21 +55,25 @@ export const useAuthStore = defineStore("auth", () => {
     }
   }
 
-  async function fetchMe() {
-    try {
-      const { data } = await http.get("/auth/me");
-      user.value = data.data.user;
-      connectSocket();
-    } catch {
-      user.value = null;
-      localStorage.removeItem("token");
+  function fetchMe() {
+    if (!initPromise) {
+      initPromise = http
+        .get("/auth/me")
+        .then(({ data }) => {
+          user.value = data.data.user;
+          connectSocket();
+        })
+        .catch(() => {
+          user.value = null;
+        });
     }
+    return initPromise;
   }
 
   async function logout() {
     await http.post("/auth/logout").catch(() => {});
+    clearAccessToken();
     user.value = null;
-    localStorage.removeItem("token");
     disconnectSocket();
     router.push("/login");
   }
