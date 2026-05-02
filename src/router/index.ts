@@ -27,7 +27,11 @@ const router = createRouter({
 
 router.beforeEach(async (to) => {
   const auth = useAuthStore();
-  await auth.fetchMe();
+
+  // Only fetch user if we don't have one and we aren't already trying to fetch
+  if (!auth.user) {
+    await auth.fetchMe();
+  }
 
   if (to.meta.requiresAuth && !auth.user) {
     return { name: "login" };

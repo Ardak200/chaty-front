@@ -1,7 +1,12 @@
 import { defineStore } from "pinia";
 import { ref } from "vue";
 import { useRouter } from "vue-router";
-import { http, setAccessToken, clearAccessToken } from "../api/http";
+import {
+  http,
+  setAccessToken,
+  clearAccessToken,
+  getAccessToken,
+} from "../api/http";
 import { connectSocket, disconnectSocket } from "../api/socket";
 
 interface User {
@@ -56,17 +61,24 @@ export const useAuthStore = defineStore("auth", () => {
   }
 
   function fetchMe() {
-    if (!initPromise) {
-      initPromise = http
-        .get("/auth/me")
-        .then(({ data }) => {
-          user.value = data.data.user;
-          connectSocket();
-        })
-        .catch(() => {
-          user.value = null;
-        });
+    if (initPromise) return initPromise;
+
+    if (!getAccessToken()) {
+      user.value = null;
+      initPromise = Promise.resolve();
+      return initPromise;
     }
+
+    initPromise = http
+      .get("/auth/me")
+      .then(({ data }) => {
+        user.value = data.data.user;
+        connectSocket();
+      })
+      .catch(() => {
+        user.value = null;
+      });
+
     return initPromise;
   }
 

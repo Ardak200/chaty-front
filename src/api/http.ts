@@ -47,7 +47,7 @@ http.interceptors.response.use(
         return http(original)
       } catch {
         clearAccessToken()
-        window.location.href = '/login'
+        return Promise.reject(error)
       }
     }
 
