@@ -4,6 +4,8 @@ import type { Socket } from "socket.io-client";
 
 const ICE_SERVERS: RTCIceServer[] = [
   { urls: "stun:stun.l.google.com:19302" },
+  { urls: "stun:stun1.l.google.com:19302" },
+  { urls: "stun:stun2.l.google.com:19302" },
   {
     urls: "turn:openrelay.metered.ca:80",
     username: "openrelayproject",
@@ -11,6 +13,11 @@ const ICE_SERVERS: RTCIceServer[] = [
   },
   {
     urls: "turn:openrelay.metered.ca:443",
+    username: "openrelayproject",
+    credential: "openrelayproject",
+  },
+  {
+    urls: "turns:openrelay.metered.ca:443",
     username: "openrelayproject",
     credential: "openrelayproject",
   },
@@ -37,6 +44,21 @@ const isCameraOff = ref(false);
 let pc: RTCPeerConnection | null = null;
 let peerId: string | null = null;
 let listenersBound = false;
+let pendingIceCandidates: RTCIceCandidateInit[] = [];
+
+async function processIceQueue() {
+  if (!pc || !pc.remoteDescription) return;
+  while (pendingIceCandidates.length > 0) {
+    const candidate = pendingIceCandidates.shift();
+    if (candidate) {
+      try {
+        await pc.addIceCandidate(candidate);
+      } catch (err) {
+        console.error("Failed to add queued ICE candidate:", err);
+      }
+    }
+  }
+}
 
 export function bindCallListeners(socket: Socket) {
   if (listenersBound) return;
@@ -61,6 +83,7 @@ export function bindCallListeners(socket: Socket) {
       try {
         await pc.setRemoteDescription(data.answer);
         status.value = "in-call";
+        await processIceQueue();
       } catch (err) {
         console.error("setRemoteDescription failed:", err);
       }
@@ -70,7 +93,10 @@ export function bindCallListeners(socket: Socket) {
   socket.on(
     "call:ice",
     async (data: { from: string; candidate: RTCIceCandidateInit }) => {
-      if (!pc) return;
+      if (!pc || !pc.remoteDescription) {
+        pendingIceCandidates.push(data.candidate);
+        return;
+      }
       try {
         await pc.addIceCandidate(data.candidate);
       } catch (err) {
@@ -99,6 +125,7 @@ function cleanupInternal() {
   status.value = "idle";
   isMuted.value = false;
   isCameraOff.value = false;
+  pendingIceCandidates = [];
 }
 
 export function useWebRTC() {
@@ -120,6 +147,7 @@ export function useWebRTC() {
     };
 
     pc.onconnectionstatechange = () => {
+      console.log("WebRTC connection state:", pc?.connectionState);
       if (
         pc?.connectionState === "disconnected" ||
         pc?.connectionState === "failed" ||
@@ -175,6 +203,7 @@ export function useWebRTC() {
       stream.getTracks().forEach((track) => connection.addTrack(track, stream));
 
       await connection.setRemoteDescription(offer);
+      await processIceQueue();
       const answer = await connection.createAnswer();
       await connection.setLocalDescription(answer);
 
