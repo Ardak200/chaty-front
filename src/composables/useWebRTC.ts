@@ -40,6 +40,7 @@ const remoteStream = shallowRef<MediaStream | null>(null);
 const incomingCall = ref<IncomingCall | null>(null);
 const isMuted = ref(false);
 const isCameraOff = ref(false);
+const callError = ref("");
 
 let pc: RTCPeerConnection | null = null;
 let peerId: string | null = null;
@@ -128,6 +129,22 @@ function cleanupInternal() {
   pendingIceCandidates = [];
 }
 
+function describeMediaError(err: unknown) {
+  if (!(err instanceof DOMException)) {
+    return "Could not start the call.";
+  }
+
+  if (err.name === "NotAllowedError") {
+    return "Camera or microphone access was blocked by the browser.";
+  }
+
+  if (err.name === "NotFoundError") {
+    return "No microphone or camera was found for this call.";
+  }
+
+  return "Could not start the call.";
+}
+
 export function useWebRTC() {
   function createPeerConnection(remotePeerId: string) {
     peerId = remotePeerId;
@@ -161,16 +178,32 @@ export function useWebRTC() {
   }
 
   async function getLocalMedia() {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: true,
-      audio: true,
-    });
+    let stream: MediaStream;
+
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: true,
+      });
+    } catch (err) {
+      if (!(err instanceof DOMException) || err.name !== "NotFoundError") {
+        throw err;
+      }
+
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: false,
+        audio: true,
+      });
+    }
+
     localStream.value = stream;
+    isCameraOff.value = stream.getVideoTracks().length === 0;
     return stream;
   }
 
   async function startCall(remoteUserId: string) {
     try {
+      callError.value = "";
       status.value = "calling";
       const stream = await getLocalMedia();
       const connection = createPeerConnection(remoteUserId);
@@ -186,6 +219,7 @@ export function useWebRTC() {
       });
     } catch (err) {
       console.error("startCall failed:", err);
+      callError.value = describeMediaError(err);
       cleanup();
     }
   }
@@ -195,6 +229,7 @@ export function useWebRTC() {
 
     try {
       const { from, offer } = incomingCall.value;
+      callError.value = "";
       status.value = "in-call";
 
       const stream = await getLocalMedia();
@@ -215,6 +250,7 @@ export function useWebRTC() {
       incomingCall.value = null;
     } catch (err) {
       console.error("acceptCall failed:", err);
+      callError.value = describeMediaError(err);
       cleanup();
     }
   }
@@ -224,6 +260,7 @@ export function useWebRTC() {
       getSocket()?.emit("call:end", { to: incomingCall.value.from });
       incomingCall.value = null;
     }
+    callError.value = "";
     status.value = "idle";
   }
 
@@ -231,6 +268,7 @@ export function useWebRTC() {
     if (peerId) {
       getSocket()?.emit("call:end", { to: peerId });
     }
+    callError.value = "";
     cleanup();
   }
 
@@ -244,7 +282,12 @@ export function useWebRTC() {
 
   function toggleCamera() {
     if (!localStream.value) return;
-    localStream.value.getVideoTracks().forEach((track) => {
+    const videoTracks = localStream.value.getVideoTracks();
+    if (videoTracks.length === 0) {
+      isCameraOff.value = true;
+      return;
+    }
+    videoTracks.forEach((track) => {
       track.enabled = !track.enabled;
     });
     isCameraOff.value = !isCameraOff.value;
@@ -261,6 +304,7 @@ export function useWebRTC() {
     incomingCall,
     isMuted,
     isCameraOff,
+    callError,
     startCall,
     acceptCall,
     rejectCall,
