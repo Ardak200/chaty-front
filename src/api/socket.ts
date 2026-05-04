@@ -1,5 +1,4 @@
 import { io, Socket } from 'socket.io-client'
-import { getAccessToken } from './http'
 import { bindCallListeners } from '../composables/useWebRTC'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000'
@@ -11,7 +10,6 @@ export function connectSocket() {
 
   socket = io(API_URL, {
     withCredentials: true,
-    auth: { token: getAccessToken() },
   })
 
   bindCallListeners(socket)

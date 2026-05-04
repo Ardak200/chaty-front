@@ -1,12 +1,7 @@
 import { defineStore } from "pinia";
 import { ref } from "vue";
 import { useRouter } from "vue-router";
-import {
-  http,
-  setAccessToken,
-  clearAccessToken,
-  getAccessToken,
-} from "../api/http";
+import { http } from "../api/http";
 import { connectSocket, disconnectSocket } from "../api/socket";
 
 interface User {
@@ -33,7 +28,6 @@ export const useAuthStore = defineStore("auth", () => {
         password,
       });
 
-      if (data.data.token) setAccessToken(data.data.token);
       user.value = data.data.user;
       connectSocket();
       router.push("/");
@@ -49,7 +43,6 @@ export const useAuthStore = defineStore("auth", () => {
     error.value = "";
     try {
       const { data } = await http.post("/auth/login", { email, password });
-      if (data.data.token) setAccessToken(data.data.token);
       user.value = data.data.user;
       connectSocket();
       router.push("/");
@@ -63,12 +56,6 @@ export const useAuthStore = defineStore("auth", () => {
   function fetchMe() {
     if (initPromise) return initPromise;
 
-    if (!getAccessToken()) {
-      user.value = null;
-      initPromise = Promise.resolve();
-      return initPromise;
-    }
-
     initPromise = http
       .get("/auth/me")
       .then(({ data }) => {
@@ -77,6 +64,10 @@ export const useAuthStore = defineStore("auth", () => {
       })
       .catch(() => {
         user.value = null;
+        disconnectSocket();
+      })
+      .finally(() => {
+        initPromise = null;
       });
 
     return initPromise;
@@ -84,9 +75,9 @@ export const useAuthStore = defineStore("auth", () => {
 
   async function logout() {
     await http.post("/auth/logout").catch(() => {});
-    clearAccessToken();
     user.value = null;
     disconnectSocket();
+    initPromise = null;
     router.push("/login");
   }
 
